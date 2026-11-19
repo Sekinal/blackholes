@@ -8,7 +8,6 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from blackholes.series import compose, lagrange_burmann_inverse
-from blackholes.series.lagrange_burmann import _reciprocal_dense
 
 m1, m2, m3, m4 = sp.symbols("m1:5", nonzero=True)
 c, f1, f2 = sp.symbols("c f1 f2", nonzero=True)
@@ -106,13 +105,3 @@ def test_missing_and_extra_coefficients_are_handled() -> None:
     """Short inputs are zero-padded; extra inputs beyond ``order`` are ignored."""
     assert lagrange_burmann_inverse([2], order=3) == [Fraction(1, 2), 0, 0]
     assert lagrange_burmann_inverse([2, 0, 0, 99], order=2) == [Fraction(1, 2), 0]
-
-
-def test_reciprocal_guard_rejects_zero_constant_term() -> None:
-    """The private reciprocal refuses a series that has no inverse.
-
-    Public callers check this earlier with a more specific message; the guard
-    exists so internal misuse fails loudly instead of returning ``zoo``.
-    """
-    with pytest.raises(ValueError, match="non-zero constant term"):
-        _reciprocal_dense([sp.Integer(0), sp.Integer(1)], length=2)

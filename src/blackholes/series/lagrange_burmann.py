@@ -29,150 +29,19 @@ Indexing conventions
 Two coefficient layouts appear, and mixing them up is the classic bug in this kind
 of code, so they are kept strictly apart:
 
-* **Dense** lists (private helpers, names ending in ``_dense``) store the
+* **Dense** lists (private module :mod:`blackholes.series._dense`) store the
   coefficient of ``y**k`` at index ``k``, starting from the constant term.
 * **Shifted** sequences (public API) describe series *without* constant term and
   store the coefficient of ``y**(k + 1)`` at index ``k``. So ``h[0]`` is h_1.
 """
 
 from collections.abc import Sequence
-from fractions import Fraction
 
 import sympy as sp
 
+from blackholes.series._dense import Scalar, as_exprs, multiply, pad, power, reciprocal
+
 __all__ = ["compose", "lagrange_burmann_inverse"]
-
-type Scalar = sp.Expr | int | Fraction
-"""Anything that SymPy can turn into an exact expression."""
-
-
-def _as_exprs(coefficients: Sequence[Scalar]) -> list[sp.Expr]:
-    """Convert user-supplied coefficients into SymPy expressions.
-
-    Parameters
-    ----------
-    coefficients
-        Integers, fractions or SymPy expressions.
-
-    Returns
-    -------
-    list[sp.Expr]
-        The same coefficients as exact SymPy objects (``Fraction`` becomes
-        ``Rational``; floats are deliberately not accepted by the type signature).
-    """
-    return [sp.sympify(c) for c in coefficients]
-
-
-def _pad_dense(coefficients: Sequence[sp.Expr], length: int) -> list[sp.Expr]:
-    """Truncate or zero-pad a dense coefficient list to an exact length.
-
-    Parameters
-    ----------
-    coefficients
-        Dense coefficients (index ``k`` holds the ``y**k`` coefficient).
-    length
-        Number of coefficients to keep, i.e. the series is known modulo
-        ``y**length``.
-
-    Returns
-    -------
-    list[sp.Expr]
-        A new list of exactly ``length`` entries.
-    """
-    padded = list(coefficients[:length])
-    padded.extend([sp.Integer(0)] * (length - len(padded)))
-    return padded
-
-
-def _multiply_dense(a: Sequence[sp.Expr], b: Sequence[sp.Expr], length: int) -> list[sp.Expr]:
-    """Multiply two dense series modulo ``y**length`` (Cauchy product).
-
-    Parameters
-    ----------
-    a
-        Dense coefficients of the first factor; missing entries count as zero.
-    b
-        Dense coefficients of the second factor; missing entries count as zero.
-    length
-        Truncation length of the result.
-
-    Returns
-    -------
-    list[sp.Expr]
-        Dense coefficients ``c_k = sum_{i=0}^{k} a_i b_{k-i}`` for ``k < length``.
-    """
-    a_full = _pad_dense(a, length)
-    b_full = _pad_dense(b, length)
-    return [
-        sp.expand(sum((a_full[i] * b_full[k - i] for i in range(k + 1)), sp.Integer(0)))
-        for k in range(length)
-    ]
-
-
-def _reciprocal_dense(a: Sequence[sp.Expr], length: int) -> list[sp.Expr]:
-    """Compute ``1 / a(y)`` modulo ``y**length`` for a dense series.
-
-    Uses the recursion obtained from ``a(y) b(y) = 1`` order by order:
-    ``b_0 = 1 / a_0`` and ``b_k = -(1 / a_0) sum_{i=1}^{k} a_i b_{k-i}``.
-
-    Parameters
-    ----------
-    a
-        Dense coefficients with an invertible constant term ``a[0]``.
-    length
-        Truncation length of the result.
-
-    Returns
-    -------
-    list[sp.Expr]
-        Dense coefficients of the reciprocal series.
-
-    Raises
-    ------
-    ValueError
-        If the constant term is (provably) zero, so no reciprocal exists.
-    """
-    a_full = _pad_dense(a, length)
-    if a_full[0].is_zero is True:
-        msg = "series reciprocal requires a non-zero constant term"
-        raise ValueError(msg)
-    inverse_a0 = 1 / a_full[0]
-    b: list[sp.Expr] = [inverse_a0]
-    for k in range(1, length):
-        tail = sum((a_full[i] * b[k - i] for i in range(1, k + 1)), sp.Integer(0))
-        b.append(sp.expand(-inverse_a0 * tail))
-    return b
-
-
-def _power_dense(a: Sequence[sp.Expr], exponent: int, length: int) -> list[sp.Expr]:
-    """Raise a dense series to a non-negative integer power modulo ``y**length``.
-
-    Binary exponentiation keeps the number of truncated products at
-    ``O(log exponent)``.
-
-    Parameters
-    ----------
-    a
-        Dense coefficients of the base series.
-    exponent
-        Non-negative integer power.
-    length
-        Truncation length of the result.
-
-    Returns
-    -------
-    list[sp.Expr]
-        Dense coefficients of ``a(y) ** exponent``.
-    """
-    result = _pad_dense([sp.Integer(1)], length)
-    base = _pad_dense(a, length)
-    remaining = exponent
-    while remaining > 0:
-        if remaining & 1:
-            result = _multiply_dense(result, base, length)
-        base = _multiply_dense(base, base, length)
-        remaining >>= 1
-    return result
 
 
 def lagrange_burmann_inverse(
@@ -216,17 +85,17 @@ def lagrange_burmann_inverse(
     if order < 1:
         msg = f"order must be >= 1, got {order}"
         raise ValueError(msg)
-    h_exprs = _as_exprs(h)
+    h_exprs = as_exprs(h)
     # g(y) = h(y) / y in dense layout: dense index k <-> shifted index k.
-    g_dense = _pad_dense(h_exprs, order)
+    g_dense = pad(h_exprs, order)
     if g_dense[0].is_zero is True:
         msg = "the linear coefficient h[0] vanishes: use a Puiseux expansion instead"
         raise ValueError(msg)
-    phi = _reciprocal_dense(g_dense, order)  # phi(y) = y / h(y)
+    phi = reciprocal(g_dense, order)  # phi(y) = y / h(y)
     coefficients: list[sp.Expr] = []
     for n in range(1, order + 1):
         # a_n = (1/n) [y^(n-1)] phi(y)^n; only n terms of phi^n are needed.
-        phi_to_n = _power_dense(phi, n, n)
+        phi_to_n = power(phi, n, n)
         a_n = phi_to_n[n - 1] / n
         coefficients.append(sp.factor(a_n) if simplify else sp.expand(a_n))
     return coefficients
@@ -261,11 +130,11 @@ def compose(outer: Sequence[Scalar], inner: Sequence[Scalar], order: int) -> lis
         msg = f"order must be >= 1, got {order}"
         raise ValueError(msg)
     length = order + 1  # dense layout includes the zero constant term
-    outer_exprs = _pad_dense(_as_exprs(outer), order)
-    inner_dense = [sp.Integer(0), *_as_exprs(inner)]
-    total = _pad_dense([], length)
-    inner_power = _pad_dense([sp.Integer(1)], length)
+    outer_exprs = pad(as_exprs(outer), order)
+    inner_dense = [sp.Integer(0), *as_exprs(inner)]
+    total = pad([], length)
+    inner_power = pad([sp.Integer(1)], length)
     for j in range(1, order + 1):
-        inner_power = _multiply_dense(inner_power, inner_dense, length)
+        inner_power = multiply(inner_power, inner_dense, length)
         total = [t + outer_exprs[j - 1] * p for t, p in zip(total, inner_power, strict=True)]
     return [sp.expand(c) for c in total[1:]]
