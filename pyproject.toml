@@ -117,7 +117,7 @@ max-args = 8
 # mypy: strict mode plus every optional error code that catches real bugs.
 # ---------------------------------------------------------------------------
 [tool.mypy]
-files = ["src", "tests"] # add "scripts" once it contains Python files
+files = ["src", "tests", "scripts"]
 python_version = "3.12"
 strict = true
 warn_unreachable = true

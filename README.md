@@ -14,35 +14,57 @@ greybody factors and evaporation trajectories).
 
 This is an independent companion project; it is not affiliated with the authors.
 
-## Status
-
-| Component | Paper reference | State |
-|---|---|---|
-| Lagrange–Bürmann inversion, series composition | Sec. 2.2, App. A | done, tested against Eq. (A.5) |
-| Puiseux expansions about degenerate horizons | Sec. 3, App. C | planned |
-| Nonlinearly charged BTZ model (mass function, critical curves) | Sec. 4, App. D | planned |
-| Figure and number reproduction (Figs. 2–6) | Secs. 4–5 | planned |
-| Convergence radius and endpoint resummation of the KPW series | Fig. 6 | planned |
-
-## Quick start
-
-Requires [uv](https://docs.astral.sh/uv/).
+## Reproduce the paper
 
 ```bash
-uv sync                 # create the environment from uv.lock
-uv run pre-commit install
-uv run poe check        # every quality gate: format, lint, types, docstrings, spelling, tests
+uv sync
+uv run python scripts/reproduce_paper.py      # ~10 s; writes outputs/figures/*.{pdf,png}
 ```
 
-Other tasks: `uv run poe --help` (e.g. `poe fmt`, `poe test-fast`).
+Every number printed in the paper is recomputed independently:
+
+| quantity | paper | reproduced |
+|---|---|---|
+| Fig. 2: neutral E_c = M_i − M_e | 1.856 | 1.85591265 |
+| Fig. 6: ΔS(E_c) | −43.209 | −43.20879253 |
+| Fig. 6: relative error of 2nd / 4th-order truncation at E_c | 40% / 29% | 40.004% / 29.348% |
+| Fig. 4: E_c (neutral, linear ½, linear ¾, exponential, fractional) | 3.9347, 4.0606, 4.0930, 3.9787, 4.0323 | 3.93468533, 4.06056292, 4.09298258, 3.97870019, 4.03229894 |
+| Fig. 4: delayed inner recovery E_s | 3.6477 | 3.64774509 |
+| Fig. 3: fractional-loss exponent p | 0.1063 | 0.10633597 |
+
+The test suite also checks the closed forms of Eqs. (2.21), (2.22), (3.5), (4.17)/(E.6)–(E.7),
+(4.22)–(4.23), (4.37)–(4.39), (4.46)–(4.47), (5.2), (5.5), (A.5), (C.6), (C.8)–(C.10) and
+(D.12)–(D.17), the first law (4.8), the Smarr relation (4.9) and the field equations of App. D.1.
+
+## Beyond the paper: convergence of the KPW series
+
+![KPW exponent, errors and Domb–Sykes plot](docs/fig6_convergence.png)
+
+For the neutral channel of Figs. 2 and 6:
+
+1. **The emitted-energy series converges on the whole emission interval.** A Domb–Sykes fit of
+   70 exact coefficients places its only nearby singularity at the outer coalescence,
+   R = E_c (relative 10⁻⁶), with exponent α = 0.5000: a square-root branch point, as Eq. (3.17)
+   predicts. Complex critical points of the mass function lie at |E| ≈ 275.
+2. **This explains Fig. 6.** The coefficients decay like n^(−3/2) E_c^(−n), so an N-term
+   truncation misses ΔS(E_c) by an amount that falls only as N^(−1/2): 40% (N=2), 29% (N=4),
+   19% (N=10), still 7% at N=70.
+3. **A uniform approximation.** In t = √(1 − E/E_c) the branch point unfolds. A polynomial in t
+   matching the Lagrange–Bürmann data at E = 0 and the Puiseux data (App. C.4) at E_c converges
+   geometrically, gaining roughly a factor 10 per term: 8 terms per end reproduce ΔS(E)
+   to 10⁻⁸ on the entire interval, endpoint included.
 
 ## Layout
 
 ```
 src/blackholes/
-    series/              formal power-series tools
-        lagrange_burmann.py
-tests/                   pytest + Hypothesis property tests (beartype-instrumented)
+    series/        exact (SymPy) and float64 Lagrange–Bürmann / Puiseux inversion
+    models/        the nonlinearly charged BTZ family (Sec. 4, App. D)
+    emission/      charge profiles and horizon histories along emission channels
+    analysis/      KPW series, Domb–Sykes convergence, two-point endpoint approximant
+    paper/         exact figure configurations, quoted values, figure builders, style
+scripts/           reproduce_paper.py
+tests/             pytest + Hypothesis (beartype-instrumented at runtime)
 ```
 
 ## Quality gates
