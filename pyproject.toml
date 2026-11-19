@@ -1,0 +1,192 @@
+[project]
+name = "blackholes"
+version = "0.1.0"
+description = "Reproducible numerics for finite-energy Hawking emission and horizon kinematics (companion code to arXiv:2611.23376)."
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [{ name = "Sekinal" }]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Physics",
+    "Typing :: Typed",
+]
+dependencies = [
+    "matplotlib>=3.11.2",
+    "mpmath>=1.3.0",
+    "numpy>=2.5.5",
+    "scipy>=1.18.1",
+    "sympy>=1.14.0",
+]
+
+[dependency-groups]
+dev = [
+    "beartype>=0.23.1",
+    "codespell>=2.4.3",
+    "hypothesis>=6.170.15",
+    "interrogate>=1.7.0",
+    "mypy>=2.4.1",
+    "poethepoet>=0.49.0",
+    "pre-commit>=4.7.0",
+    "pydoclint>=0.12.0",
+    "pytest>=9.2.0",
+    "pytest-cov>=7.1.0",
+    "pytest-randomly>=5.1.0",
+    "pytest-xdist>=3.8.0",
+    "ruff>=0.17.5",
+]
+
+[build-system]
+requires = ["uv_build>=0.11,<0.12"]
+build-backend = "uv_build"
+
+# ---------------------------------------------------------------------------
+# Task runner: `uv run poe <task>`.  `uv run poe check` is the single gate that
+# must pass before any commit (pre-commit enforces the same checks).
+# ---------------------------------------------------------------------------
+[tool.poe.tasks]
+fmt = { cmd = "ruff format .", help = "Auto-format all code" }
+fix = { cmd = "ruff check --fix .", help = "Apply safe lint auto-fixes" }
+format-check = { cmd = "ruff format --check .", help = "Fail if code is not formatted" }
+lint = { cmd = "ruff check .", help = "Lint (ruff, nearly all rules enabled)" }
+types = { cmd = "mypy", help = "Strict static type checking" }
+docstrings = { shell = "interrogate src && pydoclint src", help = "Docstring coverage and signature consistency" }
+spell = { shell = "git ls-files -z | xargs -0 codespell", help = "Spell-check every tracked file" }
+test = { cmd = "pytest", help = "Run the test suite with coverage" }
+test-fast = { cmd = "pytest -m 'not slow' -x -q --no-cov", help = "Fast tests, stop at first failure" }
+check = { sequence = [
+    "format-check",
+    "lint",
+    "types",
+    "docstrings",
+    "spell",
+    "test",
+], help = "Every quality gate, in order" }
+
+# ---------------------------------------------------------------------------
+# Ruff: start from ALL rules and opt out only with a written justification.
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "CPY001", # Per-file copyright headers: licensing is declared once at project level.
+    "COM812", # Conflicts with the formatter (trailing commas are handled by `ruff format`).
+    "N803",   # Physics notation: arguments such as M, Q, E mirror the paper's symbols.
+    "N806",   # Physics notation: local variables such as T_H, R_plus mirror the paper.
+]
+# Unicode Greek letters are deliberate in docstrings/comments that quote equations.
+allowed-confusables = ["α", "γ", "κ", "ν", "ρ", "σ", "ε", "ϵ", "−", "–", "×", "∂"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = [
+    "S101",    # pytest relies on bare `assert`.
+    "PLR2004", # Tests compare against literal reference values from the paper.
+    "INP001",  # Test directories are not packages.
+]
+"scripts/**/*.py" = [
+    "INP001", # Stand-alone entry points, not part of the package.
+    "T201",   # Scripts report results with print().
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.ruff.lint.isort]
+known-first-party = ["blackholes"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.pylint]
+max-args = 8
+
+# ---------------------------------------------------------------------------
+# mypy: strict mode plus every optional error code that catches real bugs.
+# ---------------------------------------------------------------------------
+[tool.mypy]
+files = ["src", "tests"] # add "scripts" once it contains Python files
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+extra_checks = true
+enable_error_code = [
+    "ignore-without-code",
+    "redundant-expr",
+    "redundant-self",
+    "truthy-bool",
+    "truthy-iterable",
+    "possibly-undefined",
+    "unused-awaitable",
+    "explicit-override",
+    "mutable-override",
+    "deprecated",
+]
+
+[[tool.mypy.overrides]]
+# These libraries ship no type information.
+module = ["sympy", "sympy.*", "mpmath", "mpmath.*"]
+ignore_missing_imports = true
+
+# ---------------------------------------------------------------------------
+# Docstrings: every public and private object documented (interrogate), and
+# every documented parameter/return consistent with the signature (pydoclint).
+# ---------------------------------------------------------------------------
+[tool.interrogate]
+fail-under = 100
+ignore-init-module = false
+ignore-magic = false
+ignore-private = false
+ignore-semiprivate = false
+verbose = 1
+
+[tool.pydoclint]
+style = "numpy"
+arg-type-hints-in-docstring = false
+check-return-types = false
+check-yield-types = false
+skip-checking-short-docstrings = false
+check-class-attributes = true
+
+# ---------------------------------------------------------------------------
+# Tests: warnings are errors, random order, strict markers, branch coverage.
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests", "src"]
+addopts = [
+    "-ra",
+    "--doctest-modules",
+    "--strict-markers",
+    "--strict-config",
+    "--import-mode=importlib",
+    "--cov=blackholes",
+    "--cov-report=term-missing",
+]
+xfail_strict = true
+filterwarnings = ["error"]
+markers = [
+    "slow: long-running numerical checks (deselect with -m 'not slow')",
+    "gpu: requires a CUDA device (run on the remote GPU host)",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["blackholes"]
+
+[tool.coverage.report]
+fail_under = 95
+show_missing = true
+skip_covered = true
+exclude_also = ["if TYPE_CHECKING:", "raise NotImplementedError", "@overload"]
+
+[tool.codespell]
+skip = "uv.lock,*.pdf,*.png,*.svg,.git,.venv"

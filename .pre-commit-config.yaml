@@ -1,0 +1,59 @@
+# Every hook runs through `uv run --frozen`, so it uses exactly the tool
+# versions pinned in uv.lock (no drift between pre-commit and `poe check`).
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-toml
+      - id: check-yaml
+      - id: check-added-large-files
+        args: ["--maxkb=1024"]
+      - id: check-merge-conflict
+      - id: debug-statements
+      - id: detect-private-key
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+
+  - repo: local
+    hooks:
+      - id: uv-lock
+        name: uv lockfile is up to date
+        entry: uv lock --check
+        language: system
+        files: ^(pyproject\.toml|uv\.lock)$
+        pass_filenames: false
+      - id: ruff-format
+        name: ruff format
+        entry: uv run --frozen ruff format
+        language: system
+        types: [python]
+      - id: ruff-check
+        name: ruff check
+        entry: uv run --frozen ruff check --fix --exit-non-zero-on-fix
+        language: system
+        types: [python]
+      - id: mypy
+        name: mypy (strict)
+        entry: uv run --frozen mypy
+        language: system
+        types: [python]
+        pass_filenames: false
+      - id: docstrings
+        name: docstring coverage + consistency
+        entry: uv run --frozen poe docstrings
+        language: system
+        types: [python]
+        pass_filenames: false
+      - id: codespell
+        name: codespell
+        entry: uv run --frozen codespell
+        language: system
+        types: [text]
+      - id: pytest
+        name: pytest (fast suite)
+        entry: uv run --frozen pytest -m "not slow" -q -p no:randomly --no-cov -x
+        language: system
+        types: [python]
+        pass_filenames: false

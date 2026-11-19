@@ -1,0 +1,27 @@
+# Python / tooling caches
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.hypothesis/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# Generated numerical outputs (regenerate with the scripts in scripts/)
+outputs/
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+
+# Assistant instruction files are local-only: never commit
+CLAUDE.md
+CLAUDE.local.md
