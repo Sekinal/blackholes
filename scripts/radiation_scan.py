@@ -225,15 +225,15 @@ def plot(scan: Scan, summary: dict[str, object], output_dir: Path) -> None:
             ax_b.axhline(value, color=TEXT["secondary"], linewidth=0.8, linestyle="--")
             ax_b.annotate(
                 text,
-                (scan.gaps[-1], value),
-                xytext=(0, 4),
+                (scan.gaps[0], value),
+                xytext=(4, 4),
                 textcoords="offset points",
                 color=TEXT["secondary"],
             )
         ax_b.invert_xaxis()
         ax_b.set_xlabel(r"$\Delta\mathcal{E} = M - M_e$")
         ax_b.set_ylabel(r"$\nu_{\rm eff} = d\ln L / d\ln\Delta\mathcal{E}$")
-        ax_b.legend(loc="upper right")
+        ax_b.legend(loc="center right")
         ax_b.set_title("(b) local luminosity exponent", loc="left")
         for slot, r_absorb in enumerate(BATHS):
             ax_c.loglog(
