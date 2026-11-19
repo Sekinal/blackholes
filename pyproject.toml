@@ -35,6 +35,7 @@ dev = [
     "pytest-randomly>=5.1.0",
     "pytest-xdist>=3.8.0",
     "ruff>=0.17.5",
+    "scipy-stubs>=1.18.1.1",
 ]
 
 [build-system]
@@ -84,7 +85,7 @@ ignore = [
     "N806",   # Physics notation: local variables such as T_H, R_plus mirror the paper.
 ]
 # Unicode Greek letters are deliberate in docstrings/comments that quote equations.
-allowed-confusables = ["α", "γ", "κ", "ν", "ρ", "σ", "ε", "ϵ", "−", "–", "×", "∂"]
+allowed-confusables = ["ℓ", "α", "γ", "κ", "ν", "ρ", "σ", "ε", "ϵ", "−", "–", "×", "∂"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = [
