@@ -251,6 +251,37 @@ class NonlinearBTZ:
             return prefactor * (2.0 / self.ell**2 - strength / r)
         return prefactor * (-1.0) ** (n + 1) * math.factorial(n - 2) * strength / r ** (n - 1)
 
+    def taylor_coefficient(self, r: float, Q: float, j: int) -> float:
+        """Taylor coefficient ``∂_r^j m(r, Q) / j!`` of the mass function about ``r``.
+
+        Computed in closed form so that it stays finite at any order: for
+        ``j >= 3`` the factorials of Eq. (E.3) cancel to
+        ``(π/κ) (-1)^(j+1) C / (j (j-1) r^(j-1))`` with ``C = 2√2κq/γ``.
+
+        Parameters
+        ----------
+        r
+            Expansion point (positive).
+        Q
+            Physical charge.
+        j
+            Order, ``j >= 0``.
+
+        Returns
+        -------
+        float
+            The coefficient of ``y**j`` in ``m(r + y, Q)``.
+        """
+        if j <= _LAST_POLYNOMIAL_ORDER:
+            return self.radial_derivative(r, Q, j) / math.factorial(max(j, 0))
+        self._log_term(r, Q)  # validates (r, Q)
+        return (
+            (math.pi / self.kappa)
+            * (-1.0) ** (j + 1)
+            * self._log_strength(Q)
+            / (j * (j - 1) * r ** (j - 1))
+        )
+
     def blackening(self, r: float, M: float, Q: float) -> float:
         """Blackening function ``f(r; M, Q) = (κ/π) [m(r, Q) - M]``, Eq. (4.11).
 
