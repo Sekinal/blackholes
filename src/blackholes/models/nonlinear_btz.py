@@ -339,6 +339,27 @@ class NonlinearBTZ:
         """
         return _SQRT2 * r / self.gamma * (1.0 - self._log_term(r, Q))
 
+    def potential_derivative(self, r: float, Q: float) -> float:
+        """Radial derivative ``∂_r Φ = -(√2/γ) ln(β γ r / (√2 q))`` of :meth:`potential`.
+
+        ``-∂_r Φ = ∂_r A_t`` is the radial electric field ``F_rt``; it grows
+        logarithmically, which is why this family has no canonical zero of the
+        potential at infinity.
+
+        Parameters
+        ----------
+        r
+            Radius (positive).
+        Q
+            Physical charge.
+
+        Returns
+        -------
+        float
+            ``∂_r Φ(r)``.
+        """
+        return -_SQRT2 / self.gamma * self._log_term(r, Q)
+
     def entropy(self, r_h: float) -> float:
         """Bekenstein–Hawking entropy ``S = 4π^2 r_h / κ``, Eq. (4.5).
 

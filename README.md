@@ -25,6 +25,8 @@ This is an independent companion project; it is not affiliated with the authors.
 | 5 | Near zero temperature the conformally coupled scalar's s-wave sits exactly at the AdS₂ stability (BF) bound, for *every* static extremal horizon of the form (2.1). | new, analytic |
 | 6 | Consequently the luminosity near coalescence scales as L ∝ T² (ν → 1), not the blackbody L ∝ T³ (ν = 3/2) assumed in Sec. 5. | new, analytic + numerical (bath-independent) |
 | 7 | With ν < 3/2 the adiabaticity parameter of Eq. (5.11) grows without bound as the black hole cools: the late approach to extremality is not adiabatic. | new; depends on the radiated field and the bath model (see below) |
+| 8 | The extremal throat carries an electric field whose effective AdS₂ charge is exactly 2π e r_e/(κQ) for every member of the family. A massless, conformally coupled charged scalar therefore breaks the charged BF bound for *any* e ≠ 0: the throat pair-produces charge even at T = 0. | new, analytic |
+| 9 | With charged quanta in the spectrum the hole never reaches the outer coalescence. Thermal cooling and superradiant discharge balance on a floor ΔE* ∝ e², and the hole then discharges along that floor instead of following any of the paper's prescribed channels. | new, numerical; floor values depend on the bath, its existence does not |
 
 ## Reproduce the paper
 
@@ -96,7 +98,7 @@ estimate ν = 3/2 corresponds to Δ₀ = 1 (minimal coupling).
   ν < 1 + n/2, it grows without bound for any κ and field content. The uniform adiabatic bound behind
   Eq. (5.14) therefore fails before T → 0, and the paper's "marginal" ν = 3/2 case does not apply to
   this field.
-- Accuracy: doubling the Runge–Kutta steps changes L by 3×10⁻¹²; the JAX solver agrees with an
+- Accuracy: doubling the integration steps changes L by 3×10⁻¹²; the JAX solver agrees with an
   independent adaptive SciPy solver to 10⁻⁶ (test suite).
 
 Caveat: deep in this regime the quantum (Schwarzian) fluctuations of the AdS₂ throat also become
@@ -110,6 +112,68 @@ uv sync --group cuda   # or plain `uv sync` for CPU
 uv run python scripts/radiation_scan.py --points 41 --steps 12000 --min-log-gap -10
 ```
 
+## Beyond the paper: charged emission and the actual evaporation path
+
+![Floor above coalescence and charged evaporation trajectories](docs/discharge_scan.png)
+
+The paper prescribes the charge profile Q(E) of each emission channel. If the radiated field is
+charged, the profile is not free: the fluxes decide it. Here one massless, conformally coupled
+*complex* scalar with quanta of charge ±e (units of Q) is radiated from the Fig. 2 initial state
+(Q = 2π, M = M_i) into a bath at r_a. Same assumptions as above: test field, quasi-static
+background, perfectly absorbing bath.
+
+**Gauge coupling.** The field couples to A_t = −Φ of Eq. (4.7). Only Φ(r) − Φ(r_a) enters, and
+the horizon frequency ω̃ = ω − e[Φ(r_+) − Φ(r_a)] is gauge invariant. For 0 < ω < eΦ_rel the
+greybody factor is negative (superradiance), and its product with the Bose factor stays finite
+as T → 0.
+
+**Bookkeeping (gauge invariant).** With F_Q the charge flux and F_H = Σ∫ω̃ Γ n the horizon-energy
+flux, the first law (4.8) gives T dS/dt = −F_H and dQ/dt = −F_Q. Using ∂_r m(r_e) = 0, the
+paper's distance from coalescence ΔE = M − M_e(Q) evolves as
+
+    dΔE/dt = −F_H − [Φ(r_+) − Φ(r_e)] F_Q.
+
+Superradiant quanta have ω̃ < 0, so they raise S and push ΔE *up*.
+
+**Analytic result.** Near r_e the field strength is E_e = −Φ'(r_e). Using m'(r_e) = 0 the
+effective AdS₂ charge simplifies to e E_e L₂² = e r_e/(κ q) = 2π e r_e/(κ Q) for every member of
+the family. The charged throat dimension becomes Δ = ½ + √(¼ − 2ξ + 2k²/(f''r_e²) − (2π e r_e/κQ)²).
+For ξ = 1/8 the s-wave is already at the BF bound, so any e ≠ 0 makes Δ complex, and the throat
+pair-produces charge at zero temperature (a Schwinger effect). A minimally coupled field would
+need e > κQ/(4π r_e).
+
+**Numerical results** (r_a = 5, 7, 10):
+
+- Near coalescence dΔE/dt tends to a finite *positive* constant as T → 0, so the hole is pushed
+  away. Far from it thermal cooling wins, as in the neutral case.
+- The two balance at a floor ΔE*. At Q = 2π it scales as ΔE* ∝ e^1.98 for small e on every bath.
+  Examples: r_a = 5 gives ΔE* = 1.3×10⁻³ at e = 10⁻³ and 0.16 at e = 10⁻². For r_a = 10 and
+  e = 10⁻² there is no floor at all: superradiance wins from the start.
+- Time-evolved trajectories (implicit Radau in Killing time, 47–55 steps) drop onto the floor and
+  then discharge along it while ΔE slowly grows. At the end (Q = 0.7 × 2π) they sit within 0.3%
+  of the floor for e = 10⁻³ and 3×10⁻³. For e = 10⁻², where discharge is faster than relaxation,
+  they lag it by 10%.
+- Accuracy: the charged greybody factors agree with an independent adaptive SciPy solver to 10⁻⁶,
+  including superradiant modes with |ω̃|/T ≈ 3000 (test suite). Doubling the steps changes the
+  fluxes by ≲ 5×10⁻⁵.
+
+**Numerical method.** Superradiant quanta oscillate |ω̃|/(4πT) times per e-fold near the horizon,
+which makes fixed-step Runge–Kutta unstable deep in the throat. The solver therefore uses the
+fourth-order Magnus integrator. The step matrix is traceless 2×2, so its exponential is evaluated
+in closed form and the oscillation is integrated exactly at any frequency.
+
+Caveats: the floor values depend on the bath radius, the field content and the (absent) mass of
+the charged quanta. The existence of the floor for conformal coupling does not: it follows from
+the throat analysis above, for massless quanta. A mass μ adds μ²L₂² under the square root, so
+massive charged quanta (like minimally coupled ones) need e above a threshold before the throat
+discharges at T = 0.
+
+Reproduce (~15 min on one CPU):
+
+```bash
+uv run python scripts/discharge_scan.py --output-dir outputs/discharge
+```
+
 ## Layout
 
 ```
@@ -118,9 +182,10 @@ src/blackholes/
     models/        the nonlinearly charged BTZ family (Sec. 4, App. D)
     emission/      charge profiles and horizon histories along emission channels
     analysis/      KPW series, Domb–Sykes convergence, two-point endpoint approximant
-    radiation/     scalar greybody factors (JAX), luminosity, AdS2 throat predictions
+    radiation/     scalar greybody factors (JAX, charged or neutral), luminosity, charged
+                   fluxes, discharge floor, AdS2 throat predictions
     paper/         exact figure configurations, quoted values, figure builders, style
-scripts/           reproduce_paper.py, radiation_scan.py
+scripts/           reproduce_paper.py, radiation_scan.py, discharge_scan.py
 tests/             pytest + Hypothesis (beartype-instrumented at runtime)
 ```
 

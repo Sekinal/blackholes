@@ -39,7 +39,9 @@ def _background(gap: float) -> StaticBackground:
     return StaticBackground.from_outer_horizon(MODEL, Q, MODEL.horizons(M_E + gap, Q)[-1])
 
 
-def _reference_gamma(gap: float, omega: float, k: int, r_absorb: float) -> float:
+def _reference_gamma(
+    gap: float, omega: float, k: int, r_absorb: float, charge: float = 0.0
+) -> float:
     """Independent greybody factor: adaptive SciPy integration with scalar model methods.
 
     Uses a Taylor expansion about ``r_+`` (not about ``r_min``) near the horizon and
@@ -56,6 +58,8 @@ def _reference_gamma(gap: float, omega: float, k: int, r_absorb: float) -> float
         Angular quantum number.
     r_absorb
         Absorbing radius.
+    charge
+        Charge ``e`` of the field quanta.
 
     Returns
     -------
@@ -66,6 +70,8 @@ def _reference_gamma(gap: float, omega: float, k: int, r_absorb: float) -> float
     roots = MODEL.horizons(M, Q)
     r_plus, width = roots[-1], roots[-1] - roots[-2]
     taylor = [KAPPA_OVER_PI * MODEL.taylor_coefficient(r_plus, Q, j) for j in range(1, 12)]
+    bath_potential = MODEL.potential(r_absorb, Q)
+    omega_horizon = omega - charge * (MODEL.potential(r_plus, Q) - bath_potential)
 
     def pieces(r: float) -> tuple[float, float, float, float]:
         """Return ``(f, f/(r - r_+), f', f'')`` at ``r``.
@@ -125,25 +131,37 @@ def _reference_gamma(gap: float, omega: float, k: int, r_absorb: float) -> float
         d = math.exp(s)
         _, g, _, _ = pieces(r_plus + d)
         psi, phi = complex(y[0], y[1]), complex(y[2], y[3])
+        local = omega - charge * (MODEL.potential(r_plus + d, Q) - bath_potential)
         dpsi = phi / g
-        dphi = (d * bracket(r_plus + d) - omega**2 / g) * psi
+        dphi = (d * bracket(r_plus + d) - local**2 / g) * psi
         return [dpsi.real, dpsi.imag, dphi.real, dphi.imag]
 
     span = (math.log(1e-7 * min(width, r_plus)), math.log(r_absorb - r_plus))
-    sol = solve_ivp(rhs, span, [1.0, 0.0, 0.0, -omega], method="DOP853", rtol=1e-10, atol=1e-12)
+    start = [1.0, 0.0, 0.0, -omega_horizon]
+    sol = solve_ivp(rhs, span, start, method="DOP853", rtol=1e-10, atol=1e-12)
     psi = complex(sol.y[0, -1], sol.y[1, -1])
     phi = complex(sol.y[2, -1], sol.y[3, -1])
     f = pieces(r_absorb)[0]
     p = math.sqrt(omega**2 - f * bracket(r_absorb))
     incoming = (psi - phi / (1j * p)) * math.sqrt(p) / 2
-    return omega / abs(incoming) ** 2
+    return omega_horizon / abs(incoming) ** 2
 
 
 @pytest.mark.parametrize(
-    ("gap", "x", "k"), [(1e-1, 1.0, 0), (1e-1, 5.0, 1), (1e-4, 0.1, 0), (1e-4, 1.0, 1)]
+    ("gap", "x", "k", "charge"),
+    [
+        (1e-1, 1.0, 0, 0.0),
+        (1e-1, 5.0, 1, 0.0),
+        (1e-4, 0.1, 0, 0.0),
+        (1e-4, 1.0, 1, 0.0),
+        (1e-1, 1.0, 0, 0.05),  # charged, thermal side
+        (1e-2, 10.0, 0, 0.05),  # superradiant: ω < eΦ_rel, Γ < 0
+        (1e-2, 3.0, 1, -0.05),  # antiparticle
+        (1e-5, 30.0, 0, 0.01),  # superradiant deep in the throat, |ω̃| ≫ T
+    ],
 )
-def test_greybody_matches_independent_solver(gap: float, x: float, k: int) -> None:
-    """Batched JAX RK4 agrees with adaptive SciPy (different background code).
+def test_greybody_matches_independent_solver(gap: float, x: float, k: int, charge: float) -> None:
+    """Batched JAX Magnus agrees with adaptive SciPy (different background code).
 
     Parameters
     ----------
@@ -153,16 +171,18 @@ def test_greybody_matches_independent_solver(gap: float, x: float, k: int) -> No
         Frequency in units of ``T_H``.
     k
         Angular quantum number.
+    charge
+        Charge of the field quanta.
     """
     background = _background(gap)
     omega = x * background.temperature
     r_absorb = 2 * background.r_plus
     got = float(
-        absorption_probability(background, jnp.asarray(omega), jnp.asarray(k), r_absorb=r_absorb)[
-            ()
-        ]
+        absorption_probability(
+            background, jnp.asarray(omega), jnp.asarray(k), r_absorb=r_absorb, charge=charge
+        )[()]
     )
-    assert got == pytest.approx(_reference_gamma(gap, omega, k, r_absorb), rel=1e-6)
+    assert got == pytest.approx(_reference_gamma(gap, omega, k, r_absorb, charge), rel=1e-6)
 
 
 def test_background_is_cancellation_free() -> None:

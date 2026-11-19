@@ -10,13 +10,20 @@ obeys, in the tortoise coordinate ``dr_* = dr / f``,
 
 ``ξ = 1/8`` is conformal coupling in three dimensions; ``ξ = 0`` minimal coupling.
 
+A field of charge ``e`` couples to ``A_t = -Φ`` (Eq. (4.7)) through
+``∂_t → ∂_t - i e A_t``, which replaces ``ω²`` by ``(ω - e[Φ(r) - Φ(r_a)])²``
+in the gauge where the bath at ``r_a`` is neutral (so ``ω`` is the energy the
+bath receives). At the horizon the field oscillates with
+``ω̃ = ω - e Φ_rel``, ``Φ_rel = Φ(r_+) - Φ(r_a)``, which is gauge invariant.
+
 Boundary conditions
 -------------------
-* Horizon: purely ingoing, ``ψ = e^(-iω r_*)`` (flux ``ω`` into the hole).
+* Horizon: purely ingoing, ``ψ = e^(-iω̃ r_*)`` (flux ``ω̃`` into the hole).
 * Absorbing radius ``r_a``: the field is decomposed into local WKB waves
   ``p^(-1/2) e^(±i∫p dr_*)`` with ``p = sqrt(ω² - V(r_a))``; the incoming
-  amplitude ``B`` defines the absorption probability ``Γ = ω / |B|²``, which by
-  detailed balance is also the emission probability per mode. ``r_a`` models
+  amplitude ``B`` defines the absorption probability ``Γ = ω̃ / |B|²``, which by
+  detailed balance is also the emission probability per mode. ``Γ < 0`` for
+  ``0 < ω < e Φ_rel`` is superradiance (stimulated emission of charge). ``r_a`` models
   where a bath absorbs the radiation; for this family the field strength grows
   logarithmically at infinity, so there is no canonical choice (see README), and
   results should be checked for ``r_a``-independence.
@@ -24,11 +31,21 @@ Boundary conditions
 Numerics
 --------
 In ``s = ln(r - r_+)`` the system ``dψ/ds = φ/g``,
-``dφ/ds = [(r - r_+) V/f - ω²/g] ψ`` (with ``φ = dψ/dr_*`` and
-``g = f/(r - r_+)``) has bounded coefficients down to the horizon, so a fixed-step
-classical Runge–Kutta scheme on a uniform ``s`` grid resolves the throat of
-near-extremal states. Background quantities depend only on ``s``; they are
-tabulated once and shared by the whole batch of ``(ω, k)``.
+``dφ/ds = [(r - r_+) V/f - (ω - eΦ + eΦ(r_a))²/g] ψ`` (with ``φ = dψ/dr_*`` and
+``g = f/(r - r_+)``) has bounded coefficients down to the horizon, so a uniform
+``s`` grid resolves the throat of near-extremal states. Near the horizon the
+solution oscillates ``|ω̃|/(4π T)`` times per unit ``s``; for superradiant
+quanta (``|ω̃| ≫ T``) that is far too stiff for explicit Runge–Kutta. The system
+is linear, ``dY/ds = A(s) Y`` with ``A = [[0, 1/g], [c, 0]]``, so we use the
+fourth-order Magnus integrator: ``Y_{n+1} = exp(Ω_n) Y_n`` with
+
+    Ω_n = (h/2)(A_1 + A_2) + (√3 h²/12)[A_2, A_1],
+
+``A_{1,2}`` sampled at the two Gauss points of the step. ``Ω`` is a traceless
+2×2 matrix, so ``exp(Ω) = cosh(λ) I + (sinh(λ)/λ) Ω`` with ``λ² = -det Ω``
+exactly: oscillations inside a step are integrated exactly whatever their
+frequency. Background quantities depend only on ``s``; they are tabulated once
+and shared by the whole batch of ``(ω, k)``.
 """
 
 import math
@@ -45,6 +62,10 @@ CONFORMAL_COUPLING = 1.0 / 8.0
 
 _HORIZON_OFFSET = 1e-7
 """Start the integration at ``r - r_+ = 1e-7 x`` the throat width (ingoing data error O(1e-7))."""
+
+
+_SINC_SWITCH = 1e-4
+"""Below this ``|λ|`` the series ``1 + λ²/6`` replaces ``sinh(λ)/λ`` (error ~ λ⁴/120)."""
 
 
 def _coefficients(
@@ -73,6 +94,49 @@ def _coefficients(
     ricci = -f2 - 2.0 * f1 / r
     rest = xi * ricci + f1 / (2.0 * r) - f / (4.0 * r**2)
     return 1.0 / g, distance / r**2, distance * rest
+
+
+def _magnus_propagator(
+    a1: jax.Array, a2: jax.Array, c1: jax.Array, c2: jax.Array, h: float
+) -> tuple[jax.Array, jax.Array, jax.Array, jax.Array]:
+    """Entries of ``exp(Ω)`` for ``A_j = [[0, a_j], [c_j, 0]]`` (4th-order Magnus).
+
+    With ``[A_2, A_1] = diag(d, -d)``, ``d = a_2 c_1 - a_1 c_2``, the exponent is
+    ``Ω = [[α, β], [γ, -α]]`` with ``α = √3 h² d / 12``, ``β = h (a_1 + a_2)/2``,
+    ``γ = h (c_1 + c_2)/2``, and ``exp(Ω) = C I + S Ω`` where ``λ² = α² + βγ``,
+    ``C = cosh λ`` and ``S = sinh(λ)/λ`` (``cos`` and ``sin`` when ``λ² < 0``).
+    All inputs are real, so this is evaluated in real arithmetic.
+
+    Parameters
+    ----------
+    a1
+        ``1/g`` at the first Gauss point.
+    a2
+        ``1/g`` at the second Gauss point.
+    c1
+        Coupling ``c`` at the first Gauss point.
+    c2
+        Coupling ``c`` at the second Gauss point.
+    h
+        Step in ``s``.
+
+    Returns
+    -------
+    tuple[jax.Array, jax.Array, jax.Array, jax.Array]
+        ``(m11, m12, m21, m22)`` of the one-step propagator.
+    """
+    alpha = math.sqrt(3.0) * h**2 / 12.0 * (a2 * c1 - a1 * c2)
+    beta = 0.5 * h * (a1 + a2)
+    gamma = 0.5 * h * (c1 + c2)
+    lam2 = alpha**2 + beta * gamma
+    root = jnp.sqrt(jnp.abs(lam2))
+    growing = lam2 >= 0
+    small = root < _SINC_SWITCH
+    cosine = jnp.where(growing, jnp.cosh(root), jnp.cos(root))
+    sine = jnp.where(growing, jnp.sinh(root), jnp.sin(root))
+    # sinh(λ)/λ -> 1 + λ²/6 as λ -> 0 (exact to rounding below the switch).
+    sinc = jnp.where(small, 1.0 + lam2 / 6.0, sine / jnp.where(small, 1.0, root))
+    return cosine + sinc * alpha, sinc * beta, sinc * gamma, cosine - sinc * alpha
 
 
 def potential(background: StaticBackground, r: jax.Array, k: jax.Array, xi: float) -> jax.Array:
@@ -107,6 +171,7 @@ def absorption_probability(
     *,
     r_absorb: float,
     xi: float = CONFORMAL_COUPLING,
+    charge: float = 0.0,
     steps: int = 6000,
 ) -> jax.Array:
     """Greybody factor ``Γ_k(ω)`` for each ``(ω, k)`` pair (broadcast together).
@@ -123,13 +188,16 @@ def absorption_probability(
         Radius of the absorbing bath, ``r_a > r_+``.
     xi
         Curvature coupling (default: conformal).
+    charge
+        Charge ``e`` of the field quanta, in the units of ``Q`` (first law (4.8)).
     steps
-        Number of Runge–Kutta steps in ``s = ln(r - r_+)``.
+        Number of Magnus steps in ``s = ln(r - r_+)``.
 
     Returns
     -------
     jax.Array
-        ``Γ`` in ``[0, 1]``; zero where ``V(r_a) >= ω²`` (no propagating wave
+        ``Γ <= 1`` with the sign of ``ω̃ = ω - e Φ_rel`` (negative in the
+        superradiant window); zero where ``V(r_a) >= ω²`` (no propagating wave
         reaches the bath).
 
     Raises
@@ -150,34 +218,39 @@ def absorption_probability(
     s_start = math.log(_HORIZON_OFFSET * min(background.throat_width, background.r_plus))
     s_end = math.log(r_absorb - background.r_plus)
     h = (s_end - s_start) / steps
-    # Tabulate on the half-step grid: RK4 needs s_i, s_i + h/2 and s_i + h.
-    s_grid = s_start + 0.5 * h * jnp.arange(2 * steps + 1)
-    inverse_g, k_weight, rest = _coefficients(background, background.r_plus + jnp.exp(s_grid), xi)
+    # Two Gauss–Legendre points per step (the 4th-order Magnus scheme samples A there).
+    offsets = jnp.array([0.5 - math.sqrt(3.0) / 6.0, 0.5 + math.sqrt(3.0) / 6.0])
+    s_nodes = s_start + h * (jnp.arange(steps)[:, None] + offsets[None, :])
+    radii = background.r_plus + jnp.exp(s_nodes)
+    inverse_g, k_weight, rest = _coefficients(background, radii, xi)
+    bath_potential = background.potential(jnp.asarray(r_absorb))
+    # e [Φ(r) - Φ(r_a)]: electrostatic energy of a quantum at r relative to the bath.
+    energy_shift = charge * (background.potential(radii) - bath_potential)
+    horizon_shift = charge * (background.potential(jnp.asarray(background.r_plus)) - bath_potential)
+    omega_horizon = omega_b - horizon_shift
 
-    def derivative(index: jax.Array, psi: jax.Array, phi: jax.Array) -> tuple[jax.Array, jax.Array]:
-        """Right-hand side at half-step grid point ``index``.
+    def coupling(i: jax.Array, node: int) -> jax.Array:
+        """Lower-left entry ``c = (r - r_+) V/f - (local ω)²/g`` at a Gauss node.
 
         Parameters
         ----------
-        index
-            Position on the half-step grid.
-        psi
-            Field values.
-        phi
-            ``dψ/dr_*`` values.
+        i
+            Step index.
+        node
+            Gauss node within the step (0 or 1).
 
         Returns
         -------
-        tuple[jax.Array, jax.Array]
-            ``(dψ/ds, dφ/ds)``.
+        jax.Array
+            ``c`` for the whole ``(ω, k)`` batch.
         """
-        coupling = k_b**2 * k_weight[index] + rest[index] - omega_b**2 * inverse_g[index]
-        return phi * inverse_g[index], coupling * psi
+        local_omega = omega_b - energy_shift[i, node]
+        return k_b**2 * k_weight[i, node] + rest[i, node] - local_omega**2 * inverse_g[i, node]
 
-    def rk4_step(
+    def magnus_step(
         state: tuple[jax.Array, jax.Array], i: jax.Array
     ) -> tuple[tuple[jax.Array, jax.Array], None]:
-        """One classical Runge–Kutta step from grid point ``2i`` to ``2i + 2``.
+        """Advance ``(ψ, φ)`` across step ``i`` with the 4th-order Magnus propagator.
 
         Parameters
         ----------
@@ -192,21 +265,19 @@ def absorption_probability(
             ``(ψ, φ)`` at ``s_{i+1}`` and no per-step output.
         """
         psi, phi = state
-        k1 = derivative(2 * i, psi, phi)
-        k2 = derivative(2 * i + 1, psi + 0.5 * h * k1[0], phi + 0.5 * h * k1[1])
-        k3 = derivative(2 * i + 1, psi + 0.5 * h * k2[0], phi + 0.5 * h * k2[1])
-        k4 = derivative(2 * i + 2, psi + h * k3[0], phi + h * k3[1])
-        psi_next = psi + h / 6.0 * (k1[0] + 2 * k2[0] + 2 * k3[0] + k4[0])
-        phi_next = phi + h / 6.0 * (k1[1] + 2 * k2[1] + 2 * k3[1] + k4[1])
-        return (psi_next, phi_next), None
+        m11, m12, m21, m22 = _magnus_propagator(
+            inverse_g[i, 0], inverse_g[i, 1], coupling(i, 0), coupling(i, 1), h
+        )
+        return (m11 * psi + m12 * phi, m21 * psi + m22 * phi), None
 
     psi0 = jnp.ones_like(omega_b, dtype=complex)
-    phi0 = -1j * omega_b * psi0  # ingoing: dψ/dr_* = -iωψ
-    (psi, phi), _ = jax.lax.scan(rk4_step, (psi0, phi0), jnp.arange(steps))
+    phi0 = -1j * omega_horizon * psi0  # ingoing: dψ/dr_* = -iω̃ψ
+    (psi, phi), _ = jax.lax.scan(magnus_step, (psi0, phi0), jnp.arange(steps))
 
     v_absorb = potential(background, jnp.asarray(r_absorb), k_b, xi)
     p_squared = omega_b**2 - v_absorb
     p = jnp.sqrt(jnp.where(p_squared > 0, p_squared, 1.0))
     incoming = (psi - phi / (1j * p)) * jnp.sqrt(p) / 2.0
-    gamma = omega_b / jnp.abs(incoming) ** 2
+    # Flux conservation: |B|² - |A|² = ω̃, so Γ = 1 - |A/B|² = ω̃ / |B|².
+    gamma = omega_horizon / jnp.abs(incoming) ** 2
     return jnp.where(p_squared > 0, gamma, 0.0)

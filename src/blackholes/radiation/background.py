@@ -131,6 +131,21 @@ class StaticBackground:
         """
         return self.model.mass_function(self.r_plus, self.charge)
 
+    def _log_constants(self) -> tuple[float, float]:
+        """Return ``(C, r_q)`` with ``m ∝ r²/ℓ² - C r ln(r / r_q)``, Eq. (4.10).
+
+        Returns
+        -------
+        tuple[float, float]
+            ``C = 2√2 κ q / γ`` and ``r_q = √2 q / (β γ)``.
+        """
+        model = self.model
+        q = model.q_from_charge(self.charge)
+        return (
+            2.0 * math.sqrt(2.0) * model.kappa * q / model.gamma,
+            math.sqrt(2.0) * q / (model.beta * model.gamma),
+        )
+
     def _direct_mass(self, r: jax.Array) -> jax.Array:
         """Mass function ``m(r, Q)`` by the closed form (4.10), vectorised.
 
@@ -145,9 +160,7 @@ class StaticBackground:
             ``m(r, Q)``.
         """
         model = self.model
-        q = model.q_from_charge(self.charge)
-        strength = 2.0 * math.sqrt(2.0) * model.kappa * q / model.gamma
-        scale = math.sqrt(2.0) * q / (model.beta * model.gamma)
+        strength, scale = self._log_constants()
         return (math.pi / model.kappa) * (r**2 / model.ell**2 - strength * r * jnp.log(r / scale))
 
     def g(self, r: jax.Array) -> jax.Array:
@@ -209,9 +222,26 @@ class StaticBackground:
             ``(f'(r), f''(r))``.
         """
         model = self.model
-        q = model.q_from_charge(self.charge)
-        strength = 2.0 * math.sqrt(2.0) * model.kappa * q / model.gamma
-        scale = math.sqrt(2.0) * q / (model.beta * model.gamma)
+        strength, scale = self._log_constants()
         f1 = 2.0 * r / model.ell**2 - strength * (jnp.log(r / scale) + 1.0)
         f2 = 2.0 / model.ell**2 - strength / r
         return f1, f2
+
+    def potential(self, r: jax.Array) -> jax.Array:
+        """Electric potential ``Φ(r) = -A_t(r)`` of Eq. (4.7), vectorised.
+
+        Only differences of ``Φ`` are physical; the wave equation uses
+        ``Φ(r) - Φ(r_a)`` (gauge in which the bath at ``r_a`` is neutral).
+
+        Parameters
+        ----------
+        r
+            Radii (positive).
+
+        Returns
+        -------
+        jax.Array
+            ``(√2 r / γ) [1 - ln(r / r_q)]``.
+        """
+        _, scale = self._log_constants()
+        return math.sqrt(2.0) * r / self.model.gamma * (1.0 - jnp.log(r / scale))
