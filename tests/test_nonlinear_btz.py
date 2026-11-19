@@ -164,6 +164,11 @@ def test_monotonic_sector_has_no_stationary_points() -> None:
     assert len(model.horizons(1.0, FIG2_Q)) == 1
 
 
+def test_zeroth_derivative_is_the_mass_function() -> None:
+    """``radial_derivative(..., n=0)`` returns ``m`` itself."""
+    assert FIG2.radial_derivative(1.7, FIG2_Q, 0) == FIG2.mass_function(1.7, FIG2_Q)
+
+
 def test_unit_conversions() -> None:
     """Q = 2π q and M = π M_par / κ, Eq. (4.5)."""
     assert FIG3.q_from_charge(FIG3.charge_from_q(0.7)) == pytest.approx(0.7)
