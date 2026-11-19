@@ -9,10 +9,22 @@ Reproducible, independently verified numerics for
 The goal is a small, well-tested library that regenerates every figure and quoted
 number of the paper, exposes the series machinery (Lagrange–Bürmann and Puiseux
 inversion of the horizon condition) to arbitrary order, and extends the analysis
-where the paper stops (convergence radii, resummed endpoint behaviour, and later
-greybody factors and evaporation trajectories).
+where the paper stops (convergence radii, resummed endpoint behaviour, greybody
+factors and the near-extremal emission rate).
 
 This is an independent companion project; it is not affiliated with the authors.
+
+## Findings at a glance
+
+| # | Finding | Status |
+|---|---|---|
+| 1 | Every number printed in the paper (11 values) and ~30 closed-form equations are reproduced independently. No errors found. | verified |
+| 2 | The paper's energy series for the tunneling exponent converges all the way to the outer coalescence E_c, with a square-root singularity there. | new, numerical (Domb–Sykes, 70 terms) |
+| 3 | This explains Fig. 6: the error at E_c falls only like N^(−1/2), giving exactly the quoted 40% and 29%. | new, verified |
+| 4 | In t = √(1 − E/E_c) a two-point polynomial converges geometrically: 8 terms per end give ΔS to 10⁻⁸ on the whole interval. | new, verified |
+| 5 | Near zero temperature the conformally coupled scalar's s-wave sits exactly at the AdS₂ stability (BF) bound, for *every* static extremal horizon of the form (2.1). | new, analytic |
+| 6 | Consequently the luminosity near coalescence scales as L ∝ T² (ν → 1), not the blackbody L ∝ T³ (ν = 3/2) assumed in Sec. 5. | new, analytic + numerical (bath-independent) |
+| 7 | With ν < 3/2 the adiabaticity parameter of Eq. (5.11) grows without bound as the black hole cools: the late approach to extremality is not adiabatic. | new; depends on the radiated field and the bath model (see below) |
 
 ## Reproduce the paper
 
@@ -54,6 +66,50 @@ For the neutral channel of Figs. 2 and 6:
    geometrically, gaining roughly a factor 10 per term: 8 terms per end reproduce ΔS(E)
    to 10⁻⁸ on the entire interval, endpoint included.
 
+## Beyond the paper: Hawking emission near extremality
+
+![Greybody factors, luminosity exponent and adiabaticity](docs/radiation_scan.png)
+
+**Setup and assumptions (read these first).** One massless, conformally coupled real scalar
+(ξ = 1/8) is radiated during neutral emission along the Fig. 2 path. The radiation is absorbed by a
+bath at radius r_a ∈ {5, 7, 10}. There is no canonical "infinity" for this family: its electric field
+grows like ln r, so the bath placement is a modelling choice, and we report only what does *not*
+depend on it. Units κ = ℓ = 1; the adiabaticity parameter scales with κ times the number of radiated
+fields. Modes with |k| ≥ 2 cannot propagate to these baths at low frequency; their contribution is
+suppressed as T^2.5 near extremality anyway. A minimally coupled scalar is confined by its potential
+(V ∝ r²) and needs a different bath model, so it is not computed.
+
+**Analytic result.** At the outer coalescence the horizon is an AdS₂ × S¹ throat with
+L₂² = 2/f''(r_e). A mode e^(ikφ) has dimension Δ_k = ½ + √(¼ − 2ξ + 2k²/(f''(r_e) r_e²)), using
+R(r_e) = −f''(r_e). For ξ = 1/8 the s-wave gives Δ₀ = ½, exactly at the Breitenlohner–Freedman
+bound, independent of the couplings. Greybody factors then scale as Γ_k ∝ T^(2Δ_k − 1), so
+L ∝ T^(2Δ₀ + 1) = T² up to logarithms. With T ∝ ΔE^(1/2) this is ν = 1. The paper's blackbody
+estimate ν = 3/2 corresponds to Δ₀ = 1 (minimal coupling).
+
+**Numerical confirmation** (41 states down to ΔE = 10⁻¹⁰, 86 s on an RTX 3090):
+
+- k = 1 greybody exponent: measured 1.257146 against the predicted 1.257150, for all three bath radii.
+- Local exponent ν_eff = d ln L / d ln ΔE: about 1.35–1.45 far from extremality (close to the paper's
+  3/2), then falling to 1.08 at ΔE = 10⁻¹⁰ and approaching 1, with the bath radii collapsing onto a
+  single curve.
+- Adiabaticity parameter ε_ad (Eq. (5.11), one scalar, κ = 1): grows from 3×10⁻³ to ≈ 1.7. Because
+  ν < 1 + n/2, it grows without bound for any κ and field content. The uniform adiabatic bound behind
+  Eq. (5.14) therefore fails before T → 0, and the paper's "marginal" ν = 3/2 case does not apply to
+  this field.
+- Accuracy: doubling the Runge–Kutta steps changes L by 3×10⁻¹²; the JAX solver agrees with an
+  independent adaptive SciPy solver to 10⁻⁶ (test suite).
+
+Caveat: deep in this regime the quantum (Schwarzian) fluctuations of the AdS₂ throat also become
+important (Brown et al., the paper's Ref. [24]). These results are the leading semiclassical
+statement.
+
+Reproduce (GPU optional; a few minutes on CPU):
+
+```bash
+uv sync --group cuda   # or plain `uv sync` for CPU
+uv run python scripts/radiation_scan.py --points 41 --steps 12000 --min-log-gap -10
+```
+
 ## Layout
 
 ```
@@ -62,8 +118,9 @@ src/blackholes/
     models/        the nonlinearly charged BTZ family (Sec. 4, App. D)
     emission/      charge profiles and horizon histories along emission channels
     analysis/      KPW series, Domb–Sykes convergence, two-point endpoint approximant
+    radiation/     scalar greybody factors (JAX), luminosity, AdS2 throat predictions
     paper/         exact figure configurations, quoted values, figure builders, style
-scripts/           reproduce_paper.py
+scripts/           reproduce_paper.py, radiation_scan.py
 tests/             pytest + Hypothesis (beartype-instrumented at runtime)
 ```
 
